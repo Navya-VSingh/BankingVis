@@ -1,1 +1,452 @@
+library(tidyverse)
+library(dbplyr)
+library(ggplot2)
+library(plotly)
+library(hrbrthemes)
+library(treemap)
+library(d3treeR)
+library(treemapify)
+library(zoo)
+library(highcharter)
+library(kableExtra)
+library(xts) 
 
+
+sample.data <- read.csv("Bank_Transactions.csv")
+
+sample.data$Transaction.Date <- as.Date(sample.data$Transaction.Date, format = "%d/%m/%Y")
+
+sample.data <- unique(sample.data)
+
+
+#Building simple regexp strings
+Amazon <- "Amazon|AMAZON|amazon|AMZ|Amazon *|AMAZON.CO.UK|Amazon.co.uk|AMAZON.CO.UK*|Amazon.co.uk*|AMZN Mktp UK|AMZN MKTP UK|AMZN Mktp UK*" 
+
+Bills <- "ACCOUNT FEE|CC SWANSEA C.TAX|CLUB LLOYDS FEE|DWR CYMRU W WATER|GOOD ENERGY GAS|GOOD ENERGY LTD|HOWELLS SOLICITORS|ITUNES.COM/BILL|NOTTM CITY COUNC|OCTOPUS ENERGY|SEVERN TRENT WATER|
+          |SILVER ACCOUNT|SKYPE SUBSCRIPTION|SKYPE.COM/GO/BILL|TALKTALK LIMITED|THE RENEWABLE ENER|TV LICENCE MBP|VIRGIN MEDIA PYMTS|WWW.GOODENERGY.CO.|WWW.SO.ENERGY"
+
+Clothes <- "CELIO 6309|DANCE IN TIME BOUT|GAP US 822|H & M|H & M 5|WHITE ROSE TRA|MARKS&SPENCER PLC|NATIONAL MERCH|NEW STREET HCO|OLD NAVY 4218|PRIMARK|REMUS|REMUS MANAGEMENTV2|
+            |Shop 1/ Fashion Sh|WHITE ROSE TRADING|WORTH THE WEIGHT L|ZARA NOTTINGHAM|ZARA SWANSEA|White Rose Tra"
+
+Cash <- "41|42|43|44|45|46|47|51|52|53|54|HFX TOTTENHAM COU|LNK 1 UNION STREET|LNK 36 CLUMBER STR|LNK 37 THE QUADANT|LNK 404331M&S SWAN|LNK 49-51 CLUMBER|LNK 583 MANSFIELD|LNK 90146901 SA1 G|
+        |LNK ARRIVA TRAINS|LNK BEST ONE|LNK BOOZE BUSTERS|LNK BRISTOL LANDSI|LNK CAMBRIDGE STAT|LNK CARDIFF 1|LNK COOPERATIVE LE|LNK COOPERATIVE PL|LNK DIAMOND PROPER|LNK ESTATE AGENTS|
+        |LNK FABIAN WAY|LNK FULTON HOUSE|LNK GREATER ANGLIA|LNK H&T NOTTINGHAM|LNK INTU VICTORIA|LNK LIFESTYLE EXPR|LNK M&S SWANSEA|LNK MORRISONS SWAN|LNK NOTTINGHAM RAI|LNK NOTTINGHAM UNI|
+        |LNK PO MIDDLETONBO|LNK PO THE CITYOFS|LNK QUEEN STREET|LNK RAIL BRISTOL T|LNK SAINSBURYS BAN|LNK SALUBRIOUS PLA|LNK SWANSEA 1|LNK SWANSEA 2|LNK SWANSEA CITY C|LNK SWANSEA WIND S|
+        |LNK TESCO BLEN CRT|LNK TESCO FABIAN W|LNK TESCO HK R NOT|LNK TESCO LONG ROW|LNK TESCO M M WA N|LNK TESCO NO RA RD|LNK TESCO SWANSEA|LNK THE COOPERATIV|LNK THE KINGSWAY|LNK UNI - UNIVERSI|
+        |LNK UNION STREET|LNK UNIVERSITY PAR|LNK UPLANDS CRESCE|LOYD LOYD 36 - 38|LOYD LOYD 802 OXFO|LOYD LOYD LOWER PA|LOYD SWANSEA UNIVE|LOYD TALIESIN BUIL|LOYD WALES UNIV SW"
+
+DineOut <- "13th Element|200 DEGREES|31K|4500 MILES|ANATOLIA TURKISH R|ANOKI LTD|ASHA'S|ASPIRE CAFE|ATRIUM JUBILEE 1|AZZURRI RESTAURANT|BAR BIGO|BELL INN|BLAZE PIZZA|BLEND COFFEE HOUSE|
+            |BREKA BAKERY & CAF|Brontosaurus Vegan|BUDDY ITALIAN REST|BURGER KING|CAFE CHHINO|CAFE TERRAZZO|Caffe Concerto|CAFFE NERO 650 NOT|CAFFE NERO BIRMING|CAFFE NERO NOTTING|CARTWHEEL COFFEE L|
+            |CASSAL RESTAURANTS|CHEF EXPRESS S.P.A|COFFEE NO 1 SWANSE|COFFEE#1 SWANSEA|COSTA COFFEE 43038|DARCYS RESTAURANT|DEEDEES ApS|DELIVEROO|DELIVEROO.CO.UK|DELIVEROOCOUK|DERBY MED CAFE|
+            |DOMINO'S PIZZA|DOSA N CHUTNEY|DOUGHNOTTS BAKERY|ESCOBAR|FALAFEL|FARM FRESH NOTTING|FRESHII - 653|GREGGS|GREGGS PLC|HARTLEYS SANDWICH|HEAVENLY DESSERTS|HMSHOST AMSTERDAM|HUI LAU SHAN|
+            |ISTANBUL RESTAURAN|ITALIAN VILLAGE|BELLAPAELLA|BIRD & BLEND T|Brontosaurus V|EZY VEGAN LTD|Friska Ltd|Secret Burger|JAPAN RESTAURANT|JUMON|KELLYS CELLARS|
+            |KFC NOTTINGHAM|LAS IGUANAS|LAS IGUANAS - TEMP|LAS IGUNAS|LITTLE WING PIZZER|LNK THE KINGSWAY|MASALA JUNCTION|MCDONALDS|MEDINA CONTINENTAL|MIB AARHUS LUFTHAV|MOWGLI STREET FOOD|
+            |MUANG THAI 9 LTD|NANDOS BULLRING|No. Twelve|PASTIES 4 YOU LTD|PIE MINISTER|PIZZA EXPRESS|Pizza Forum|PIZZAMISU|DOUGHNOTTS|PRET A MANGER|PRICKLY PEAR|PROSPECT POINT BAR|PUB ON THE POND|
+            |REST JARDIM DAS CE|RESTAURANTE DA TER|REVOLUT|REVOLUTION DE CUBA|SHAKSHUKA|SHREWSBURY STARBUC|SOLO GRANO|SOUTHBANK BAR|DIVINE COFFEE|TIKI BAR|STARBUCKS|STARBUCKS CAFE|STARBUCKS COFFEE C|
+            |Subway 26377 Corne|Subway 30392 Lento|Subway 32610 Midla|Subway 39497 Victo|Subway 69392 Belfa|SWANSEA FOOD CENTR|SWANSEA UNI - CATE|T4 TEA SALOON|Tasnack|TERRA RESTAURANTE|THE BAYVIEW PUB AN|
+            |THE BLIND RABBIT|THE CALCUTTA CLUB|The Corinthian|THE GIANTS BARN CA|THE NED LUDD|THE NEW CONTINENTA|THE ORGAN GRINDER|THE PRINCIPAL MANC|THE RISE BAKERY|The Speciality Cof|THE TERRACE CAFE M|
+            |U CANTEEN|EATS|UBER EATS|UNION ROOMS|V Spot|VEGAN LAUNCH|VIETNAMESE STREET|WAGAMAMA BIRMINGHA|WAGAMAMA CARDIFF L|WASABI BIRMINGHAM|WHEELHOUSE|WWW.DOUGHN|WWW.DOUGHNOTTSOFFI|YE OLDE TRIP TO JE|
+            |YOLK.|ZINCO LOUNGE"
+
+Entertainment <- "ANTIGONI GKRIZI|antigonipsychology|ASKCRAIG|ATHLEAN-X|Audible Ltd|Audible UK|Audible.co.uk|BACHATA SUENO|WWWPLEDGEMUSIC|BRITANNIA|CARL DAVENPORT|CAVES|CINEWORLD|CINEWORLD NOT CP|
+                  |CLOUD9 PURSUITS LT|COOL FISH RIDES S|DANTER ATTRACTIONS|DISCO BOWL NOTTING|REGGEATON WORK|SPEED DATING O|EXOTICA|FUNSTATION|LAND ROVER SOCIAL|MUSEUM|NOTTINGHAM CASTLE|
+                  |ODEON|ODEON UPT|ODEON/BOOKIT|P.O. 37 THE QUADAN|PLUSNET PLC 0845 1|RAMSDALE PARK GC|ROLLS ROYCE LEISUR|ROOT|SCHLOSS DAGSTUHL -|NOTTINGHAM BAC|TODO LATIN|TIGERMILK EVENTS|
+                  |TROPICAL SUMMER FE|VUE BSL LTD|WWW.FATSOMA.COM|WWW.FREEDOM-LEISUR|WWW.SU.NOTTINGHAM."
+
+Fitness <- "HARLANDS|HARLANDS GROUP|Yogaya CIC|AT1.SPACE|PURE GYM LTD|PureGym Limited|THE GYM LIMITED|THE GYM LTD"
+
+Groceries <- "ALDI|ASIANA HYPERMARKET|BLUEBIRD WHOLEFOOD|CO-OP GROUP 010161|CO-OP GROUP 010661|CO-OP GROUP FOOD|COVIRAN LOS ABRIGO|GHOUSIA FOODS|GRAPE TREE|HOLLAND & BARRETT|EPICURIOSITY L|
+              |JS ONLINE GROCERY|Kaya Food Centre|LIDL GB NOTTINGHA|LIDL GB NOTTINGHAM|LIDL NI LTD|M&S SIMPLY FOOD -|M&S SIMPLY FOOD SS|M&S SIMPLY FOOD-SS|MINIPRECO LOIOS 2|MOGAL EXPRESS|Murat food centre|
+              |ORIENTAL MART|ORIENTAL MART HYDR|OZAN INTERNATIONAL|POUNDLAND LTD 1414|POUNDLAND LTD 1718|POUNDLAND LTD 1726|POUNDSTRETCHER 270|POUNDSTRETCHER 63|RAJAH FOOD STORE L|SAINSBURY S S/MKTS|
+              |SAINSBURYS - SWANS|SAINSBURYS S/MKT|SAINSBURY'S S/MKT|SAINSBURYS S/MKTS|SHARIF AND SONS SU|SLIM CHICKENS NOTT|TESCO STORE 2960|TESCO STORE 3033|TESCO STORE 3241|TESCO STORES 4628|TESCO STORES 5244|
+              |TESCO STORES 5368|TESCO STORES 5653|TESCO STORES 5660|TESCO STORES 5954|TESCO STORES 5957|TESCO STORES 6213|TESCO STORES 6430|TESCO STORES 6735|WATSON & PRATTS|WHOLEFDS BLH 10091|WM MORRISONS STORE|
+              |WWW.ORGANICFRESHFO"
+
+Health <- "UPLANDS CHIROPRACT"
+
+HomeImprovement <- "ADI PRO LEAK LTD|ANTONY GRICE |EASTERN AVENUE RE|APOLLO BLINDS|B & Q 1213|BRITISH GAS TRADIN|CAPEWELL WINDOW CL|CARPETRIGHT|CITY PLUMBING SUPP|CLASSIC DOORS AND|CONFETTI CONSTELLA|
+                    |CORGI HOMEPLAN|CORGI HOMEPLAN CA|COSMIC KITCHEN LIM|ECOTRICITY|Electrolux plc|FUNKY FUTON CO LTD|LTD GROUP LIMI|PERSIMMON HOMES WE|RAC ELECTRICAL CON|RONSONS #102|Shopping Domus Tri|
+                    |SHS|HOMEDETAIL-UK|SPRINGFIELD DEVELO|FLOOR & DECOR|SUSU TRADING LTD|THE LITTLE CARPET|TRISTRAMS|TRISTRAMS LETTINGS|WWW.ALLBAMBOOLTD.C"
+
+Hotels <- "Acron Czech s.r.o.|AIRBNB|HM9YBKEXN|HMABB9424|HMREJB2DY|ALEXANDER BEACH HO|AMISTAT ISLAND HOS|AMISTATISLANDHOSTE|ART VILLA NAUTILUS|BEAUFORT PARK HOTE|BIG SLEEP HOTEL|
+          |BIRMINGHAM INT HOT|BIRMINGHAM NS T/O|BIRMINGHAM NS TVM|COMFORT INN BIRMIN|CROWNE PLAZA|DOUBLETREE BY HILT|easyHotel Birmingh|GRUPO HOTELES PLAY|HAMPTON BY HILTON|HATHWAY HOUSE ACCO|HENDON HALL HOTEL|
+          |HILTON|HILTON HOTELS|HILTON HOTELS PALM|HOLIDAY INN EXPRES|HOLIDAY INN HOUSTO|HOLIDAY INNS|HOSTEL WORLD|Hotel on Booking.c|HOTEL PRAGUE CASTL|HYATT REGENCY PHOE|IBIS BRISTOL TEMPL|JURYS INN EAST MID|
+          |NH GENOVA CENTRO|NOSDA STUDIO HOSTE|ORCHARD HOTEL|PINNACLE VANCOUVER|PREMIER INN4401262|QUEENS HOTEL|RADISSON BLU HOTEL|ST GILES HOTEL|THE ALBANY HOTEL"
+
+Insurance <- "ASSURANT INTER LTD|AVIVA LIFE|LV LIFE|LVFS LTD A A/C|WWW.DEZREZLEGAL.CO|ZURICH"
+
+monthlyInterest <- "INTEREST"
+
+Investment <- "ABN-AMRO|Trading212UK|WWW.III.CO.UK DE|TRADING212UK"
+
+Mortgage <- "BARCLAYS UK MTGES|DEZREZ LEGAL LTD|NATIONAL WESTMINST|NATWEST BANK|PRINCIPALITY BS|SANTANDER MORTGAGE"
+
+OtherShopping <- "ACTIVATORME|ALADDINS BIKES|Alegro Setubal-P1|BIOPOINT|BOOTSKILBURN|BRS WDF MAIN|BUNNEYS BIKES LIMI|CANDLES & CO|CITY FLOWERS|CRYSTAL CLEAR|CRYSTAL DRAGON|CYCLECHIC LTD|DEBENHAMS|DISNEY STORE NOTTI|
+                  |EC GIFTWARE LTD|ETSY.COM - AURAGRA|FEELINGS GIFT SHOP|HP INC UK LIMITED|HPI INSTANT INK UK|IKEA LTD SHOP ONLI|IKEA ONLINE|Nottingham Bik|J D SPORTS PLC|JUMBO SETUBAL|Kiehls since 1851|
+                  |LUSH RETAIL LTD|Lush UK|MEIA DUZIA|MOUNTAIN WAREHOUSE|NEWSLINK 16 BOS|O2|ONEBELOW|PATRICIA A S LAW|SAVERS - 1207|SBY SWANSEA UPL C|SKECHERS PLYMOUTH|SKECHERS-USA #229|ETHICAL PETS|
+                  |SPORTSDIRECT 141|SPORTSDIRECT 195|SUPERDRUG STORES P|T K MAXX|THE BIKE HUB|THE BIKE SHOP|The Body Shop|THE BODY SHOP INTL|THE HEALTH SHOP|TIMPSON LTD|VALLEY MILL LTD|WH SMITH|WILKO RETAIL LIMIT|
+                  |YANKEE STORE"
+
+Paycheck <- "SWANSEA UNI - PAY|SWANSEA UNIVERSITY|UNIV OF NOTTINGHAM"
+
+Services <- "17 E MONROE ST LBB|A.MEADOWCROFT|ABAYOMI OLUSUNLE|ACTBLUE|BERNIE.SAN|ALAN HOLLAND|ALICJA ROSIEK|AMELIA TERESZKIEWI|ANDREW MUMBI|DHERGANE FARAH|Elenas Patisserie|FRANCESCO LEONE|JAMES DAVIES|
+                          |JOE SPENCE|JOHN DEMISA|KYLE MCDERMOTT|LAURA FOGLIATA|MARIA DONNARUMMA|MISS D WU|MR IAN ELLIS|MR J DOME|MR J LITCHFIELD|CASASANTASOFIA|P M GREY|CARL DAVIE|DISC HEALT|
+                          |JAKUBSTADT|VIMEO INC|ROTHERAS SOLICITOR|SERGEJS KATACINS|SHARE DEALINGS LEE|SHAWS #0677|STEWART SCHOFIELD|CODE 34|HAVANA SAL|LOS TRAVIE|LTP|
+                          |TAMBA HISSIROU|TAXAS KUNDECENTER|TETOUAN MHANNEC|UNIV & COL UNION|URBANZENINSTRUCTOR|VINOTH ASIRVADAM|Klaus Mueller"
+
+Rent <- "PETER ALAN RESIDEN"
+
+Savings <- "ESAVINGS ACCOUNT|SAVE THE CHANGE"
+
+SupplementaryIncome <- "ALHARBI M|AMZ*Amazon.co.uk|AMZ*Dealsdirect247|AMZ*Discounted Cle|AMZ*Globoshop|AMZ*hzmizimi|AMZ*MokenEye-UK|AMZ*momox co uk|AMZ*Zeina Foods|ANMF CREDIT|BAMFORD C     ADGD|C C SWANSEA|
+					  |CARDIFF MET EX A/C|CLKBANK*COM_REFUND|CLUB LLOYDS WAIVED|DEPOSIT PROTECTION|DOMINO'S PIZZA - H|DWR CYMRU WELSH WA|E JAKUBOWSKA|F/FLOW AARHUS UNIV|F/FLOW GRINDEYS LL|F/FLOW HOWELLS LEG|
+						|F/FLOW KATHLEEN M|F/FLOW KING ABDULL|F/FLOW NATWEST BAN|F/FLOW UNIVERSITY|GOOGLE IRELAND|HOWELLS LEGAL LIMI|IISL CLIENT GBP SE|INFORMA UK LTD|IRG ADVISORS LLP|LOYD 802 OXFORD ST|
+						|MARK NEAL WINSTEIN|MIAH MA|MIDDLESEX UNIV|MIDDLESEX UNIV.|NCC TRADE CRED NEW|O CONNOR CAROL|OLUSUNLE A D|OPEN UNIVERSITY|P PROKURAT|PAULINA PROKURAT|PAYPAL CODE 3241|PERDIGAO M|
+						|PLUSNET PLC PAY AC|Q WANG|R LARAMEE|ROTHERAS /CLI|S.H.S.|SEENUNDUN VS|SHAREDEALING HSDL|SKETTY SWANSEA|STFC AP|SWANSEA UNIVERSITY|UNII OF BHAM INST|UNIOF WARWICK|UNIVERSITY OF EAST|
+						|UNIVERSITY OF OXFO|WU|YEWANDE MARIAN ADE|ZOE LI VOLSI"
+
+Travel <- "AIRMARO G.B I|UNIVERSITY OF HOU|VANCOUVER CBC & M|AMTRAK 292795|ARRIVA MERSEYSIDE|ARRIVA TRAINS WALE|BANCA CARIGE CR GE|BookingUK (LTD)|CALLE CATALUNA 4|CASA AEREPORT M|CD BRNO HL.N.|
+            |CHINA VISA SERVICE|DB AUTOMATEN|DELTA|EAST MIDS RAILWAY|EASTMIDLANDSCOM|EASYJET|EB 2021 IEEE CONFE|EMBASSY SUITES BAL|ESTREL FRONT OFFIC|EXPEDIA|FGW WEBSALES|FOREIGN CASH FEE|
+			      |GetYourGuide UK Lt|GWR BRISTOL TM SST|GWR LON PADD TO|GWR STOKE GIFF SST|GWR WEBSALES|GWR WEBSALES ECOM|HILTON HTL UNIV OF|HOUSTON GEORGE BUS|J B PEARCE LTD|KLM FSSC BUD SCHI|
+			      |KLM NETHERLA074821|KLM|KLM UK 074532|KLM UNITEDKI074822|KLM UNITEDKI074823|REF UGUA8R OPT|LUL TICKET MACHINE|MIDTTRAFIK|NS DELFT|NS SCHIPHOL|ROMA TERMINI SELF|RYANAIR|SCANDIC AARHUS CIT|
+			      |ST PAUL'S BAY|Stalida-Malia|Taxi first|SUPREME AIRPORT SH|SUTTON COLDFIELD A|TFW RAIL SERVICES|THE LANGLEY ARMS|TICKETS 0871220026|TICKETS08712200260|TRAINAWAY APS|TUI|TURKISH LTD 311058|
+			      |UBER TRIP|UBER TRIP HELP.UBE|UBER|TRIP|UNITED|VISIT BELFAST|WEST COAST TRAINS|WILSONOVA 300/8|WWW.COLSTONHALL.OR"
+
+# Add a class field to the data, default "other"
+sample.data$Category <- ifelse(is.na(sample.data$Credit.Amount),"Others","Supplementary Income")
+#sample.data$Category <- "Others"
+
+# Apply the regexp and return their class
+sample.data$Category <- ifelse(grepl(Amazon, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount),"Amazon","Supplementary Income"),
+                               ifelse(grepl(Bills, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Bills", "Supplementary Income"),
+                                      ifelse(grepl(Clothes, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Clothes", "Supplementary Income"),
+                                             ifelse(grepl(DineOut, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Dine Out", "Supplementary Income"),
+                                                    ifelse(grepl(Entertainment, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Entertainment", "Supplementary Income"),
+                                                           ifelse(grepl(Fitness, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Fitness", "Supplementary Income"),
+                                                                  ifelse(grepl(Groceries, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Groceries", "Supplementary Income"),
+                                                                         ifelse(grepl(Health, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Health", "Supplementary Income"),
+                                                                                ifelse(grepl(HomeImprovement, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Home Improvement", "Supplementary Income"), 
+                                                                                       ifelse(grepl(Hotels, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Hotels", "Supplementary Income"),
+                                                                                              ifelse(grepl(Insurance, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Insurance", "Supplementary Income"),
+                                                                                                     ifelse(grepl(monthlyInterest, sample.data$Transaction.Description), "Interest",
+                                                                                                            ifelse(grepl(Investment, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Investments", "Supplementary Income"),
+                                                                                                                   ifelse(grepl(Mortgage, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Mortgage", "Supplementary Income"),
+                                                                                                                          ifelse(grepl(OtherShopping, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Other Shopping", "Supplementary Income"),
+                                                                                                                                 ifelse(grepl(Paycheck, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Others", ifelse(sample.data$Credit.Amount > 3000, "Paycheck","Supplementary Income")), 
+                                                                                                                                        ifelse(grepl(Services, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount),"Services", "Supplementary Income"),
+                                                                                                                                               ifelse(grepl(Savings, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Savings", "Supplementary Income"),
+                                                                                                                                                      ifelse(grepl(SupplementaryIncome, sample.data$Transaction.Description),ifelse(is.na(sample.data$Credit.Amount), "Others", "Supplementary Income"),
+                                                                                                                                                             ifelse(grepl(Cash, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Cash", "Supplementary Income"),
+                                                                                                                                                                    ifelse(grepl(Travel, sample.data$Transaction.Description), ifelse(is.na(sample.data$Credit.Amount), "Travel", "Supplementary Income"),ifelse(is.na(sample.data$Credit.Amount),"Others","Supplementary Income"))))))))))))))))))))))
+
+
+#Add a type field to data, default "Outgoing
+sample.data$type <- ifelse(grepl(Savings, sample.data$Transaction.Description), "Savings",
+                           ifelse(grepl(Health, sample.data$Transaction.Description), "Health",
+                                  ifelse(!is.na(sample.data$Credit.Amount),"Incoming","Outgoing")))
+
+#sample.data$type <- ifelse(!is.na(sample.data$Credit.Amount),"Incoming","Outgoing")
+
+# Add a Year field for aggregation
+sample.data$Year <- as.Date(cut(sample.data$Transaction.Date, breaks="year"))
+sample.data$MonthYear <- as.yearmon(sample.data$Transaction.Date, "%b-%Y")
+
+sample.data <- sample.data %>% arrange(MonthYear)
+
+sample.data$general <- rowSums(sample.data[,c("Debit.Amount", "Credit.Amount")], na.rm=TRUE)
+
+#Seperating Credit and Debit Records
+onlyCreditData <- subset(sample.data, !is.na(sample.data$Credit.Amount))
+onlyDebitData <- subset(sample.data, is.na(sample.data$Credit.Amount))
+onlySavingsData <- subset(sample.data, type == "Savings")
+onlyHealthData <- subset(sample.data, type == "Health")
+
+noOfDbtTrns <- aggregate(onlyDebitData$Debit.Amount, by=list(Category = onlyDebitData$Category,Year = onlyDebitData$Year), FUN=length)
+noOfCrdTrns <- aggregate(onlyCreditData$Credit.Amount, by=list(Category = onlyCreditData$Category,Year = onlyCreditData$Year), FUN=length)
+noOfSaving <- aggregate(onlySavingsData$Credit.Amount, by=list(Category = onlySavingsData$Category,Year = onlySavingsData$Year), FUN=length)
+noOfHealth <- aggregate(onlyHealthData$Credit.Amount, by=list(Category = onlyHealthData$Category,Year = onlyHealthData$Year), FUN=length)
+
+
+smrDebit <- onlyDebitData %>% group_by(Year, Category, type) %>% mutate(Total=sum(Debit.Amount))
+smrDebit <- subset( smrDebit, select = c( 9:11, 14 ))
+smrCredit1 <- onlyCreditData %>% group_by(Year, Category, type) %>% mutate(Total=sum(Credit.Amount))
+smrCredit <- subset( smrCredit1, select = c( 9:11, 14 ))
+smrSavings <- onlySavingsData %>% group_by(Year, Category, type) %>% mutate(Total=sum(Debit.Amount))
+smrSavings <- subset( smrSavings, select = c( 9:11, 14 )) 
+smrHealth <- onlyHealthData %>% group_by(Year, Category, type) %>% mutate(Total=sum(Debit.Amount))
+smrHealth <- subset( smrHealth, select = c( 9:11, 14 ))
+
+
+smrDebit <- merge(smrDebit, noOfDbtTrns, by = c('Category','Year'))
+smrCredit <- merge(smrCredit, noOfCrdTrns, by = c('Category','Year'))
+smrSavings <- merge(smrSavings, noOfSaving, by = c('Category','Year'))
+smrHealth <- merge(smrHealth, noOfHealth, by = c('Category','Year'))
+
+
+TotalSummary <- rbind(smrCredit,smrDebit,smrSavings,smrHealth)
+TotalSummary <- unique(TotalSummary)
+TotalSummary <- TotalSummary %>% arrange(Year)
+
+
+
+#####################################################################################################################
+
+##BarPlot for showing yearly spendings
+
+Data <- subset( onlyCreditData, select = -c( 6 ))
+Data <- Data %>%
+  rename(Amount = Credit.Amount)
+
+Data1 <- subset( onlyDebitData, select = -c( 7 ))
+Data1 <- Data1 %>%
+  rename(Amount = Debit.Amount)
+Data1$Amount[sapply(Data1$Amount, is.numeric)] <- Data1$Amount[sapply(Data1$Amount, is.numeric)] * -1
+
+TestData <- rbind(Data,Data1)
+
+
+
+ggbarplot <- ggplot(TestData, aes(x = Transaction.Date, y = Amount, fill = Category)) + 
+  geom_bar(stat = "identity") + 
+  scale_x_date(date_labels="%Y",date_breaks  ="1 year") +
+  ggtitle("Detailed Spendings") + xlab("Transaction Date") + ylab("Amount (£)") + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        plot.title = element_text(color="black", size=14, face="bold",hjust = 0.5),
+        axis.title.x = element_text(color="black", size=12, face="bold"),
+        axis.title.y = element_text(color="black", size=12, face="bold")) 
+
+ggbarplot
+ggplotly(ggbarplot)
+
+
+###############################################################################################################
+
+### Stacked Barchart for Total spending and Number of transaction
+
+#StackBarPlot for year vs number of transactions
+NoTranBarPlot <- plot_ly(TotalSummary, x = ~Year, y = ~x, type = 'bar', name = ~Category, textposition = "none",
+                         hoverinfo = "text", 
+                         hovertext = paste(TotalSummary$Category, "-", TotalSummary$x,
+                                           #"<br>#Transaction :", TotalSummary$x,
+                                           "<br> Total Spending:", TotalSummary$Total))
+NoTranBarPlot <- NoTranBarPlot %>% layout(yaxis = list(title = 'Number of Transaction per Year'), barmode = 'stack')
+NoTranBarPlot <- NoTranBarPlot %>% layout(hovermode = "x unified") 
+NoTranBarPlot
+
+
+
+################################################################################################################
+
+####
+#Money put in investment
+MoneyInInvestment <- filter(sample.data, Category == "Investments")
+MoneyInInvestment$Transaction.Description <- gsub('TRADING212UK', 'Trading212UK', MoneyInInvestment$Transaction.Description)
+MoneyInInvestment <- MoneyInInvestment %>% arrange(Transaction.Date) %>% group_by(Transaction.Description) %>% summarise(sum = sum(Debit.Amount))
+InvestPlot <- plot_ly(MoneyInInvestment, x = ~Transaction.Description, y = ~sum, type = 'bar',
+                      text = ~sum, textposition = 'auto',
+                      marker = list(color = 'rgb(158,202,225)',
+                                    line = list(color = 'rgb(8,48,107)', width = 1)))
+InvestPlot <- InvestPlot %>% layout(title = "Money in Each Investment",
+                                    xaxis = list(title = "Money Invested"),
+                                    yaxis = list(title = "Investments"))
+
+InvestPlot
+
+
+#################################################################################################################
+
+##### Avg Dinning plot
+
+Dining <- filter(sample.data, Category == "Dine Out")
+
+Dining$Transaction.Description <- gsub('IZ *Brontosaurus V', 'Brontosaurus Vegan', Dining$Transaction.Description)
+Dining$Transaction.Description <- gsub('CAFFE NERO 650 NOT|CAFFE NERO BIRMING|CAFFE NERO NOTTING', 'CAFFE NERO', Dining$Transaction.Description)
+Dining$Transaction.Description <- gsub('DELIVEROO|DELIVEROO.CO.UK|DELIVEROOCOUK', 'DELIVEROO', Dining$Transaction.Description)
+Dining$Transaction.Description <- gsub('WWW.DOUGHN* DOUGHN|WWW.DOUGHNOTTSOFFI|PP*DOUGHNOTTS', 'DOUGHNOTTS BAKERY', Dining$Transaction.Description)
+Dining$Transaction.Description <- gsub('GREGGS|GREGGS PLC', 'GREGGS', Dining$Transaction.Description)
+Dining$Transaction.Description <- gsub('LAS IGUANAS - TEMP|LAS IGUNAS', 'LAS IGUANAS', Dining$Transaction.Description)
+Dining$Transaction.Description <- gsub('SHREWSBURY STARBUC|STARBUCKS CAFE|STARBUCKS COFFEE C', 'STARBUCKS', Dining$Transaction.Description)
+Dining$Transaction.Description <- gsub('Subway 26377 Corne|Subway 30392 Lento|Subway 32610 Midla|Subway 39497 Victo|Subway 69392 Belfa', 'Subway', Dining$Transaction.Description)
+Dining$Transaction.Description <- gsub('WAGAMAMA BIRMINGHA|WAGAMAMA CARDIFF L', 'WAGAMAMA', Dining$Transaction.Description)
+#Dining$DS <- paste(Dining$Transaction.Date, "-", Dining$general)
+
+
+
+
+Dining <- subset( Dining, select = c(1,5:6 ))
+
+Dining <- Dining[order(as.Date(Dining$Transaction.Date, format="%d/%m/%Y")),]
+Dining$MonthYear <- as.yearmon(Dining$Transaction.Date, "%b-%Y")
+
+ModifiedDining <- Dining %>% group_by(Transaction.Description, MonthYear) %>% mutate(sum=sum(Debit.Amount))
+temp1 <- NULL
+
+
+computeDetails <- function() {
+  ModifiedDining$DS <<- paste(ModifiedDining$Transaction.Date, "-", ModifiedDining$Debit.Amount)
+  temp <- ModifiedDining %>% group_by(MonthYear, Transaction.Description) %>% mutate(DS = paste(DS, collapse = ", ")) %>% mutate(total = n()) 
+  
+  temp1 <<- temp %>%
+    arrange(MonthYear) %>%
+    filter(duplicated(MonthYear) == FALSE)
+  print(temp1)
+  
+}
+
+computeDetails()
+
+dp <- plot_ly(temp1, x = ~factor(MonthYear), y = ~total, type = 'bar', name = ~Transaction.Description, textposition = "none",
+              hoverinfo = "text", 
+              hovertext = paste("<br>", temp1$Transaction.Description, "-", temp1$total, "<b>Transaction Date:</b>", temp1$MonthYear, "<b>Total Spending:</b>", temp1$sum,
+                                "<br>", temp1$DS))
+dp <- dp %>% layout(title = "Avg Spending on Dine Out", xaxis = list(title = "Time in Month"),yaxis = list(title = 'Number of Dining Transaction per Year'), barmode = 'stack') 
+dp <- dp %>% layout(hovermode = "x unified") 
+dp
+
+
+
+#########################################################################################################
+##Salary Inflation plot
+
+inflation.data <- read.csv("InflationRates.csv")
+
+inflation.data <- inflation.data %>% rename(MonthYear = ï..MonthYear) 
+inflation.data <- inflation.data %>% mutate(MonthYear = as.yearmon(as.POSIXct(as.Date(x = paste0("01-", MonthYear), format = '%d-%B-%y'), "%b-%Y")))
+print(inflation.data)
+
+OnlyPaycheck <- sample.data %>% arrange(Transaction.Date) %>% filter(Category == "Paycheck")
+
+SalarySummary <- subset( OnlyPaycheck, select = c(1,12:13 ))
+
+inflationSalary <- merge(SalarySummary, inflation.data, by = c("MonthYear"))
+
+SalarySummary1 <- SalarySummary %>% arrange(Transaction.Date) %>% group_by(MonthYear) %>% summarise(Total = sum(general), .groups = 'drop')
+
+inflationSalary <- inflationSalary %>% mutate(inflatedSalary = general * (InflationRate + 1))
+inflationSalary <- unique(inflationSalary)
+
+inflationSalaryPlot <- plot_ly(inflationSalary , x = ~factor(MonthYear), y = ~general, type = 'bar', name = "Salary") %>%
+  add_trace(data , x = ~factor(MonthYear), y = ~inflatedSalary, type = 'scatter',  mode = 'lines', name = "Salary Inflation")
+
+inflationSalaryPlot <- inflationSalaryPlot %>% layout(title = "Salary Inflation",
+                                    xaxis = list(title = "Time in Month"),
+                                    yaxis = list(title = "Salary"))
+
+inflationSalaryPlot
+
+
+
+
+###################################################################################################
+
+library(forecast)
+
+forecastData <- onlyDebitData
+Modifiedforecast <- forecastData %>% group_by(MonthYear) %>% mutate(sum=sum(Debit.Amount))
+Modifiedforecast$Month <- format(Modifiedforecast$Transaction.Date, format="%b")
+Modifiedforecast$Year <- format(Modifiedforecast$Transaction.Date, format="%Y")
+
+Modifiedforecast <- subset( Modifiedforecast, select = c( 11,14:15 ))
+Modifiedforecast <- unique(Modifiedforecast)
+
+Modifiedforecast1 <- ts(Modifiedforecast$sum, start = 2015, frequency = 12)
+Modifiedforecast1 %>% ggtsdisplay()
+
+Modifiedforecast.t_wide <- Modifiedforecast %>% spread(Month,sum)
+Modifiedforecast.t_wide[is.na(Modifiedforecast.t_wide)] <- 0
+
+#Modifiedforecast_ts <- OnlyPaycheck %>% arrange(Transaction.Date) %>% group_by(Transaction.Date) %>% summarise(sum = sum(Credit.Amount))
+#ts_converted_salary = xts( x=salary_ts[,-1], order.by=salary_ts$Transaction.Date)
+
+forecastPlot <- forecast(ets(Modifiedforecast1), h = 48, level = 95)
+hc <- hchart(forecastPlot)
+hc
+
+##################################################################################################
+#Area Chart
+
+categoryBankData <- sample.data
+categoryBankData  <- categoryBankData %>% group_by(MonthYear, Category)
+categoryBankData.t <- categoryBankData %>% summarise(dayT = sum(general))
+categoryBankData.t_wide <- categoryBankData.t %>% spread(Category,dayT)
+categoryBankData.t_wide[is.na(categoryBankData.t_wide)] <- 0
+
+colourArea <- colorRampPalette(c('red', 'blue', 'yellow'))
+pal <- colourArea(25)
+
+fig <- plot_ly(categoryBankData.t_wide, x = ~factor(MonthYear), y = ~Amazon, name = 'Amazon', type = 'scatter', mode = 'none', stackgroup = 'one', fillcolor = "#fd7f6f")
+fig <- fig %>% add_trace(y = ~Bills, name = 'Bills', fillcolor = "#7eb0d5")
+fig <- fig %>% add_trace(y = ~Cash, name = 'Cash', fillcolor = "#b2e061")
+fig <- fig %>% add_trace(y = ~Clothes, name = 'Clothes', fillcolor = "#bd7ebe")
+fig <- fig %>% add_trace(y = ~DineOut, name = 'Dine Out', fillcolor = "#ffb55a")
+fig <- fig %>% add_trace(y = ~Entertainment, name = 'Entertainment', fillcolor = "#ffee65")
+fig <- fig %>% add_trace(y = ~Fitness, name = 'Fitness', fillcolor = "#beb9db")
+fig <- fig %>% add_trace(y = ~Groceries, name = 'Groceries', fillcolor = "#fdcce5")
+fig <- fig %>% add_trace(y = ~Health, name = 'Health', fillcolor = "#8bd3c7")
+fig <- fig %>% add_trace(y = ~HomeImprovement, name = 'Home Improvement', fillcolor = "#54bebe")
+fig <- fig %>% add_trace(y = ~Hotels, name = 'Hotels', fillcolor = "#76c8c8")
+fig <- fig %>% add_trace(y = ~Insurance, name = 'Insurance', fillcolor = "#98d1d1")
+fig <- fig %>% add_trace(y = ~Interest, name = 'Interest', fillcolor = "#badbdb")
+fig <- fig %>% add_trace(y = ~Investment, name = 'Investment', fillcolor = "#dedad2")
+fig <- fig %>% add_trace(y = ~Mortgage, name = 'Mortgage', fillcolor = "#e4bcad")
+fig <- fig %>% add_trace(y = ~OtherShopping, name = 'Other Shopping', fillcolor = "#df979e")
+fig <- fig %>% add_trace(y = ~Others, name = 'Others', fillcolor = "#466964")
+fig <- fig %>% add_trace(y = ~Paycheck, name = 'Paycheck', fillcolor = "#3c4e4b")
+fig <- fig %>% add_trace(y = ~Services, name = 'Services', fillcolor = "#599e94")
+fig <- fig %>% add_trace(y = ~Savings, name = 'Savings', fillcolor = "#c80064")
+fig <- fig %>% add_trace(y = ~SupplementaryIncome, name = 'Supplementary Income', fillcolor = "#363445")
+fig <- fig %>% add_trace(y = ~Travel, name = 'Travel', fillcolor = "#48446e")
+fig <- fig %>% add_trace(y = ~Rent, name = 'Rent', fillcolor =  "#5e569b")
+
+fig <- fig %>% layout(title = 'Spendings',
+                      xaxis = list(title = "",
+                                   showgrid = FALSE),
+                      yaxis = list(title = "Amount (in pounds)", type = "log",
+                                   showgrid = FALSE))
+
+fig
+
+#################################################################################################################
+
+library(DT)
+library(data.table)
+library(rqdatatable)
+
+total_summary <- TotalSummary
+
+total_summary <- read.csv('TotalSummary.csv')
+
+total_summary <- total_summary %>% mutate(Year = format(as.Date(Year, format="%d/%m/%Y"),"%Y"))
+
+total_summary %>% View()
+
+
+dout1 <- total_summary %>% data_to_hierarchical(group_vars = c(Year, type, Category), size_var = x)
+dout2 <- total_summary %>% data_to_hierarchical(group_vars = c(Year, type, Category), size_var = Total)
+
+#df <- data.frame(matrix(unlist(unlist(dout1)), nrow=length(dout1), byrow=TRUE))
+
+
+dddd <- total_summary %>% group_by(Year) %>% 
+  summarise(total_amt = sum(Total)) %>% 
+  mutate(id = Year) %>% 
+  rename(total = total_amt) %>% ungroup() %>% select(total, id)
+
+aaaa <- total_summary %>% group_by(Year, type) %>% 
+  summarise(total_amt = sum(Total)) %>% 
+  mutate(id = paste0(Year, separator = "_", tolower(type))) %>% 
+  rename(total = total_amt) %>% ungroup() %>% select(total, id)
+
+df1 <- rbindlist(dout1, fill=TRUE) 
+df2 <- rbindlist(dout2, fill=TRUE) %>% rename(total = value)
+
+df3 <- merge(df1 %>% select(id, value), df2, by = c("id"))
+
+final <- natural_join(df3, dddd, by = "id", jointype = "FULL")
+final <- natural_join(final, aaaa, by = "id", jointype = "FULL")
+xrrr <- list_parse(final)
+
+hchart(xrrr, type = "treemap", allowDrillToNode = T) %>%
+  hc_tooltip(formatter= JS("function () { return '' + 
+  this.point.name  + ' <br /> Transactions: ' + this.point.value +
+                       '<br /> Amount: ' +this.point.total ;}"))
